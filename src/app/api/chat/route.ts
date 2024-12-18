@@ -3,78 +3,55 @@
 // Refer to the Groq SDK here on how to use an LLM: https://www.npmjs.com/package/groq-sdk
 // Refer to the Cheerio docs here on how to parse HTML: https://cheerio.js.org/docs/basics/loading
 // Refer to Puppeteer docs here: https://pptr.dev/guides/what-is-puppeteer
-import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium-min";
-import { NextResponse, NextRequest } from "next/server";
-import * as cheerio from "cheerio";
+import { groqResponse } from "@/app/utils/groqClient";
+import puppeteer from "puppeteer-core";
 
 chromium.setHeadlessMode = true;
 chromium.setGraphicsMode = false;
+await chromium.font(
+  "https://raw.githack.com/googlei18n/noto-emoji/master/fonts/NotoColorEmoji.ttf"
+);
 
-export async function GET() {}
+console.log("Print Local Chromium Path");
+const isLocal = !!process.env.CHROME_EXECUTABLE_PATH;
+console.log(isLocal);
 
-export async function POST(req: Request, userId: Number) {
-  await chromium.font(
-    "https://raw.githack.com/googlei18n/noto-emoji/master/fonts/NotoColorEmoji.ttf"
-  );
+console.log("Print Chromium Path");
+const executablePath = await chromium.executablePath(
+  `https://chromium-executable-39193i921.s3.us-east-1.amazonaws.com/chromium-v131.0.1-pack.tar`
+);
+console.log(executablePath);
 
-  const isLocal = !!process.env.CHROME_EXECUTABLE_PATH;
-  const browser = await puppeteer.launch({
-    args: isLocal
-      ? puppeteer.defaultArgs()
-      : [...chromium.args, "--hide-scrollbars", "--incognito", "--no-sandbox"],
-    defaultViewport: chromium.defaultViewport,
-    executablePath:
-      process.env.CHROME_EXECUTABLE_PATH || (await chromium.executablePath()),
-    headless: chromium.headless,
-  });
+const browser = await puppeteer.launch({
+  args: isLocal
+    ? puppeteer.defaultArgs()
+    : [...chromium.args, "--hide-scrollbars", "--incognito", "--no-sandbox"],
+  defaultViewport: chromium.defaultViewport,
+  executablePath: process.env.CHROME_EXECUTABLE_PATH || executablePath,
+  headless: chromium.headless,
+  ignoreDefaultArgs: ["--disable-extensions"],
+});
 
-  const page = await browser.newPage();
-  await page.goto("https://example.com");
-  const pageTitle = await page.title();
-  await browser.close();
+const page = await browser.newPage();
+await page.goto(
+  "https://edition.cnn.com/2024/12/06/science/nasa-chief-trump-pick-jared-isaacman/index.html",
+  { waitUntil: "networkidle2" }
+);
+const content = await page.content();
+await browser.close();
 
+export async function POST(req: Request) {
   try {
-    //If url in message, u need to parse it
-    //U need to user puppeteer to extract dynamic JS url pages
-    //if groq rate limit hit, use google gemini models
-    //When parsing a URL, check if it exists in your cache first
-    const data = await req.json();
-    const message = data.body;
-    const urls: string[] = message.match("https?:\/\/[^\s/$.?#].[^\s]*") || [];
-
-    const results = await Promise.all(
-      urls.map(async (url) =>
-        try{
-          const article = await fetch(url);
-          const contentType = article.headers.get("content-type") || "";
-          if (contentType.includes("text/html")) {
-            const html = await article.text();
-            const $ = cheerio.load(html);
-            const title = $("title").text(); // Example: Extract the <title>
-            return { url, type: "static", title, html };
-          }else{
-            const browser = await puppeteer.launch();
-            const page = await browser.newPage();
-            await page.goto(url, { waitUntil: "networkidle2" });
-
-            const dynamicContent = await page.content(); // Get the HTML of the rendered page
-            const title = await page.title(); // Extract the title dynamically
-            await browser.close();
-
-            return { url, type: "dynamic", title, html: dynamicContent };
-
-          }
-        }
-          catch(error){};
-
-      )
-    );
-
-
-
-    return NextResponse.json({});
+    const { message } = await req.json();
+    const urls: string[] =
+      message.match(
+        /(?:(?:https?|ftp|file):\/\/|www\.|ftp\.)(?:\([-A-Z0-9+&@#\/%=~_|$?!:,.]*\)|[-A-Z0-9+&@#\/%=~_|$?!:,.])*(?:\([-A-Z0-9+&@#\/%=~_|$?!:,.]*\)|[A-Z0-9+&@#\/%=~_|$])/gim
+      ) || [];
+    console.log("URLS:" + urls);
+    const response = await groqResponse(message);
+    return Response.json({ message: response });
   } catch (error) {
-    console.log("Not a valid Message!");
+    console.log("Error: " + error);
   }
 }

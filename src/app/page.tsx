@@ -10,13 +10,11 @@ type Message = {
 export default function Home() {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([
-    { role: "ai", content: "Hello! How can I help you today?" },
+    { role: "ai", content: "Hello! How can I help you?" },
   ]);
   const [isLoading, setIsLoading] = useState(false);
-
   const handleSend = async () => {
     if (!message.trim()) return;
-
     // Add user message to the conversation
     const userMessage = { role: "user" as const, content: message };
     setMessages(prev => [...prev, userMessage]);
@@ -33,6 +31,8 @@ export default function Home() {
       });
 
       // TODO: Handle the response from the chat API to display the AI response in the UI
+      const data = await response.json();
+      setMessages(prev => [...prev, { role: "ai", content: data.message }]);
     } catch (error) {
       console.error("Error:", error);
     } finally {

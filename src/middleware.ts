@@ -7,19 +7,14 @@ import type { NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
   try {
-
     const response = NextResponse.next();
-
+    console.log(request);
+    console.log("Cache Response: " + response);
     return response;
-
-
-
   } catch (error) {
-
-
+    console.log("Error: " + error);
   }
 }
-
 
 // Configure which paths the middleware runs on
 export const config = {
